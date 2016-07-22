@@ -5,14 +5,11 @@ os:
   - osx
 compiler:
   - clang
-  - gcc
 
 metrix:
   include:
     - os: osx
       osx_image: xcode7.3
-    - os: osx
-      osx_image: beta-xcode6.1
 
 addons:
    apt:
