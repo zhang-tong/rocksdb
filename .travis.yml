@@ -34,7 +34,7 @@ before_script:
   - ulimit -n 2000 || true
 
 script:
-  - OPT=-DTRAVIS V=1 make -j4 db_sst_test; ./db_test --gtest_filter=*DeleteObsoleteFilesPendingOutputs
+  - OPT=-DTRAVIS V=1 make -j4 db_sst_test; ./db_sst_test --gtest_filter=*DeleteObsoleteFilesPendingOutputs
 notifications:
     email:
       - leveldb@fb.com
