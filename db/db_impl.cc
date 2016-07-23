@@ -2687,7 +2687,11 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
     manual.end = &end_storage;
   }
 
+  printf("before mutex lock\n");
+
   InstrumentedMutexLock l(&mutex_);
+
+  printf("after mutex lock\n");
 
   // When a manual compaction arrives, temporarily disable scheduling of
   // non-manual compactions and wait until the number of scheduled compaction
@@ -2704,6 +2708,7 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
   // others will wait on a condition variable until it completes.
 
   AddManualCompaction(&manual);
+  printf("after add manual compaction\n");
   TEST_SYNC_POINT_CALLBACK("DBImpl::RunManualCompaction:NotScheduled", &mutex_);
   if (exclusive) {
     while (bg_compaction_scheduled_ > 0) {
@@ -2723,6 +2728,7 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
   // the compaction will set manual.status to bg_error_ and set manual.done to
   // true.
   while (!manual.done) {
+    printf("manual compaction pending\n");
     assert(HasPendingManualCompaction());
     manual_conflict = false;
     if (ShouldntRunManualCompaction(&manual) || (manual.in_progress == true) ||
@@ -2736,6 +2742,7 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
          manual_conflict)) {
       // exclusive manual compactions should not see a conflict during
       // CompactRange
+      printf("waiting\n");
       assert(!exclusive || !manual_conflict);
       // Running either this or some other manual compaction
       bg_cv_.Wait();
@@ -2745,6 +2752,7 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
         manual.incomplete = false;
       }
     } else if (!scheduled) {
+      printf("not scheduled\n");
       if (manual.compaction == nullptr) {
         manual.done = true;
         bg_cv_.SignalAll();
@@ -2757,6 +2765,7 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
       bg_compaction_scheduled_++;
       env_->Schedule(&DBImpl::BGWorkCompaction, ca, Env::Priority::LOW, this,
                      &DBImpl::UnscheduleCallback);
+      printf("scheduled\n");
       scheduled = true;
     }
   }
@@ -2764,7 +2773,9 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
   assert(!manual.in_progress);
   assert(HasPendingManualCompaction());
   RemoveManualCompaction(&manual);
+  printf("after remove manual compaction\n");
   bg_cv_.SignalAll();
+  printf("after signal all\n");
   return manual.status;
 }
 

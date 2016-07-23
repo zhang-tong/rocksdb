@@ -145,6 +145,7 @@ TEST_F(DBSSTTest, DeleteObsoleteFilesPendingOutputs) {
       }
     }
     if (blocking) {
+      printf("block it!\n");
       blocking_thread.DoSleep();
     }
   };
