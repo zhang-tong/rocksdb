@@ -113,6 +113,7 @@ TEST_F(DBSSTTest, DeleteObsoleteFilesPendingOutputs) {
 
   Reopen(options);
 
+  printf("begin\n");
   Random rnd(301);
   // Create two 1MB sst files
   for (int i = 0; i < 2; ++i) {
@@ -120,10 +121,13 @@ TEST_F(DBSSTTest, DeleteObsoleteFilesPendingOutputs) {
     for (int j = 0; j < 100; ++j) {
       ASSERT_OK(Put(Key(i * 50 + j), RandomString(&rnd, 10 * 1024)));
     }
+    printf("before flush %d\n", i);
     ASSERT_OK(Flush());
+    printf("after flush %d\n", i);
   }
   // this should execute both L0->L1 and L1->(move)->L2 compactions
   dbfull()->TEST_WaitForCompact();
+  printf("after compact\n");
   ASSERT_EQ("0,0,1", FilesPerLevel(0));
 
   test::SleepingBackgroundTask blocking_thread;
@@ -145,14 +149,17 @@ TEST_F(DBSSTTest, DeleteObsoleteFilesPendingOutputs) {
     }
   };
   env_->table_write_callback_ = &block_first_time;
+  printf("after setup callback\n");
   // Create 1MB sst file
   for (int j = 0; j < 256; ++j) {
     ASSERT_OK(Put(Key(j), RandomString(&rnd, 10 * 1024)));
   }
   // this should trigger a flush, which is blocked with block_first_time
   // pending_file is protecting all the files created after
+  printf("after new memtable\n");
 
   ASSERT_OK(dbfull()->TEST_CompactRange(2, nullptr, nullptr));
+  printf("after L2 compact\n");
 
   ASSERT_EQ("0,0,0,1", FilesPerLevel(0));
   std::vector<LiveFileMetaData> metadata;
@@ -160,15 +167,20 @@ TEST_F(DBSSTTest, DeleteObsoleteFilesPendingOutputs) {
   ASSERT_EQ(metadata.size(), 1U);
   auto file_on_L2 = metadata[0].name;
   listener->SetExpectedFileName(dbname_ + file_on_L2);
+  printf("after set expected file name\n");
 
   ASSERT_OK(dbfull()->TEST_CompactRange(3, nullptr, nullptr, nullptr,
                                         true /* disallow trivial move */));
   ASSERT_EQ("0,0,0,0,1", FilesPerLevel(0));
+  printf("after L3 compact\n");
 
   // finish the flush!
   blocking_thread.WakeUp();
+  printf("after wake up blocking thread\n");
   blocking_thread.WaitUntilDone();
+  printf("blocking thread done\n");
   dbfull()->TEST_WaitForFlushMemTable();
+  printf("blocked flush done\n");
   ASSERT_EQ("1,0,0,0,1", FilesPerLevel(0));
 
   metadata.clear();
@@ -178,6 +190,7 @@ TEST_F(DBSSTTest, DeleteObsoleteFilesPendingOutputs) {
   // This file should have been deleted during last compaction
   ASSERT_EQ(Status::NotFound(), env_->FileExists(dbname_ + file_on_L2));
   listener->VerifyMatchedCount(1);
+  printf("everything done\n");
 }
 
 #endif  // ROCKSDB_LITE
