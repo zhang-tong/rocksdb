@@ -2997,11 +2997,13 @@ void DBImpl::BGWorkFlush(void* db) {
 }
 
 void DBImpl::BGWorkCompaction(void* arg) {
+  printf("BGWorkCompaction start\n");
   CompactionArg ca = *(reinterpret_cast<CompactionArg*>(arg));
   delete reinterpret_cast<CompactionArg*>(arg);
   IOSTATS_SET_THREAD_POOL_ID(Env::Priority::LOW);
   TEST_SYNC_POINT("DBImpl::BGWorkCompaction");
   reinterpret_cast<DBImpl*>(ca.db)->BackgroundCallCompaction(ca.m);
+  printf("BGWorkCompaction finishes\n");
 }
 
 void DBImpl::BGWorkPurge(void* db) {
@@ -3165,14 +3167,17 @@ void DBImpl::BackgroundCallFlush() {
 }
 
 void DBImpl::BackgroundCallCompaction(void* arg) {
+  printf("BackgroundCallCompaction start\n");
   bool made_progress = false;
   ManualCompaction* m = reinterpret_cast<ManualCompaction*>(arg);
   JobContext job_context(next_job_id_.fetch_add(1), true);
   TEST_SYNC_POINT("BackgroundCallCompaction:0");
   MaybeDumpStats();
   LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
+  printf("BackgroundCallCompaction before lock\n");
   {
     InstrumentedMutexLock l(&mutex_);
+    printf("BackgroundCallCompaction after lock\n");
     num_running_compactions_++;
 
     auto pending_outputs_inserted_elem =
@@ -3181,6 +3186,7 @@ void DBImpl::BackgroundCallCompaction(void* arg) {
     assert(bg_compaction_scheduled_);
     Status s =
         BackgroundCompaction(&made_progress, &job_context, &log_buffer, m);
+    printf("BackgroundCallCompaction after background compaction\n");
     TEST_SYNC_POINT("BackgroundCallCompaction:1");
     if (!s.ok() && !s.IsShutdownInProgress()) {
       // Wait a little bit before retrying background compaction in
@@ -3200,13 +3206,16 @@ void DBImpl::BackgroundCallCompaction(void* arg) {
       env_->SleepForMicroseconds(1000000);
       mutex_.Lock();
     }
+    printf("BackgroundCallCompaction before release file number\n");
 
     ReleaseFileNumberFromPendingOutputs(pending_outputs_inserted_elem);
+    printf("BackgroundCallCompaction after release file number\n");
 
     // If compaction failed, we want to delete all temporary files that we might
     // have created (they might not be all recorded in job_context in case of a
     // failure). Thus, we force full scan in FindObsoleteFiles()
     FindObsoleteFiles(&job_context, !s.ok() && !s.IsShutdownInProgress());
+    printf("BackgroundCallCompaction after file obsolete files\n");
 
     // delete unnecessary files if any, this is done outside the mutex
     if (job_context.HaveSomethingToDelete() || !log_buffer.IsEmpty()) {
@@ -3223,15 +3232,18 @@ void DBImpl::BackgroundCallCompaction(void* arg) {
       job_context.Clean();
       mutex_.Lock();
     }
+    printf("BackgroundCallCompaction after file obsolete files\n");
 
     assert(num_running_compactions_ > 0);
     num_running_compactions_--;
     bg_compaction_scheduled_--;
 
     versions_->GetColumnFamilySet()->FreeDeadColumnFamilies();
+    printf("BackgroundCallCompaction after free dead CFs\n");
 
     // See if there's more work to be done
     MaybeScheduleFlushOrCompaction();
+    printf("BackgroundCallCompaction after maybe schedule\n");
     if (made_progress || bg_compaction_scheduled_ == 0 ||
         HasPendingManualCompaction()) {
       // signal if
@@ -3240,13 +3252,16 @@ void DBImpl::BackgroundCallCompaction(void* arg) {
       // * HasPendingManualCompaction -- need to wakeup RunManualCompaction
       // If none of this is true, there is no need to signal since nobody is
       // waiting for it
+      printf("BackgroundCallCompaction before signal all\n");
       bg_cv_.SignalAll();
+      printf("BackgroundCallCompaction after signal all\n");
     }
     // IMPORTANT: there should be no code after calling SignalAll. This call may
     // signal the DB destructor that it's OK to proceed with destruction. In
     // that case, all DB variables will be dealloacated and referencing them
     // will cause trouble.
   }
+  printf("BackgroundCallCompaction finish\n");
 }
 
 Status DBImpl::BackgroundCompaction(bool* made_progress,
